@@ -1,12 +1,17 @@
 import numpy as np
+from src.simcore.atmosphere import isa_density
+
 G = 9.71 # in units of m/s^2
-def derivatives(state, drag_coeff = .02): # define the derivatives of the state variables
+def derivatives(state, drag_coeff=0.02):
     x, y, vx, vy = state
     speed = np.sqrt(vx**2 + vy**2)
-    drag_x = -drag_coeff * speed * vx
-    drag_y = -drag_coeff * speed * vy
+    rho = isa_density(y)
+    rho0 = isa_density(0)  # sea-level reference
+    density_ratio = rho / rho0
+    drag_x = -drag_coeff * density_ratio * speed * vx
+    drag_y = -drag_coeff * density_ratio * speed * vy
     ax = drag_x
-    ay = drag_y - G
+    ay = drag_y - 9.81
     return np.array([vx, vy, ax, ay])
 
 def rk4_step(state, dt, drag_coeff = .02): # perform a single Runge-Kutta 4th order step
