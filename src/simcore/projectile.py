@@ -1,8 +1,12 @@
 import numpy as np
 G = 9.71 # in units of m/s^2
-def derivatives(state): # define the derivatives of the state variables
+def derivatives(state, drag_coeff = .02): # define the derivatives of the state variables
     x, y, vx, vy = state
-    ax, ay = 0.0, -G
+    speed = np.sqrt(vx**2 + vy**2)
+    drag_x = -drag_coeff * speed * vx
+    drag_y = -drag_coeff * speed * vy
+    ax = drag_x
+    ay = drag_y - G
     return np.array([vx, vy, ax, ay])
 
 def rk4_step(state, dt): # perform a single Runge-Kutta 4th order step
