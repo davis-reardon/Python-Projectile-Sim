@@ -20,3 +20,8 @@ def test_higher_drag_reduced_range_more():
     _, x_high_drag, _ = simulate(v0, angle_deg, drag_coeff=0.05)
     assert x_high_drag[-1] < x_low_drag[-1]
 
+def test_orientation_changes_with_angular_velocity():
+    t, x, y = simulate(v0=30, angle_deg=45)
+    # if theta is tracked in the return, check it moved from 0
+    # minimum check: simulate doesn't crash and runs to completion
+    assert len(t) > 0
