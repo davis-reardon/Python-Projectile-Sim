@@ -9,7 +9,8 @@ def derivatives(state, t, drag_coeff=0.02, thrust_n=0, burn_time_s=0,
                  wind_accel_z=0.0, abort_time_s=None,
                  grain_inner_radius0_m=None, grain_outer_radius_m=None,
                  grain_burn_rate_m_s=None, grain_length_m=None,
-                 thrust_per_area_n_m2=None, stability_coeff=0.0):
+                 thrust_per_area_n_m2=None, stability_coeff=0.0,
+                 gimbal_angle_deg=0.0, moment_arm_m=0.1):
     x, y, z, vx, vy, vz, theta, omega = state
     speed = np.sqrt(vx**2 + vy**2 + vz**2)
     rho = isa_density(y)
@@ -29,31 +30,32 @@ def derivatives(state, t, drag_coeff=0.02, thrust_n=0, burn_time_s=0,
     use_grain = grain_inner_radius0_m is not None
 
     if t < burn_time_s and burn_time_s > 0:
-        # NOTE: mass depletion remains linear-in-time regardless of grain
-        # geometry (simplifying assumption) — only thrust profile changes
-        # when grain parameters are supplied.
-        mass = dry_mass_kg + propellant_mass_kg * (1 - t / burn_time_s)
-        if use_grain:
-            r = bates_burn_radius(t, grain_inner_radius0_m,
-                                   grain_outer_radius_m, grain_burn_rate_m_s)
-            area = bates_burn_area(r, grain_length_m)
-            thrust = thrust_per_area_n_m2 * area
-        else:
-            thrust = thrust_n
+            mass = dry_mass_kg + propellant_mass_kg * (1 - t / burn_time_s)
+            if use_grain:
+                r = bates_burn_radius(t, grain_inner_radius0_m,
+                                       grain_outer_radius_m, grain_burn_rate_m_s)
+                area = bates_burn_area(r, grain_length_m)
+                thrust = thrust_per_area_n_m2 * area
+            else:
+                thrust = thrust_n
     else:
-        mass = dry_mass_kg
-        thrust = 0
+            mass = dry_mass_kg
+            thrust = 0
 
     aborted = abort_time_s is not None and t >= abort_time_s
 
     if aborted:
-        thrust_x, thrust_y, thrust_z = 0.0, thrust / mass, 0.0
-    elif speed > 0:
-        thrust_x = thrust * (vx / speed) / mass
-        thrust_y = thrust * (vy / speed) / mass
-        thrust_z = thrust * (vz / speed) / mass
+            thrust_x, thrust_y, thrust_z = 0.0, thrust / mass, 0.0
+            gimbal_torque = 0.0
     else:
-        thrust_x, thrust_y, thrust_z = 0, 0, 0
+            thrust_angle = theta + np.radians(gimbal_angle_deg)
+            thrust_x = thrust * np.cos(thrust_angle) / mass
+            thrust_y = thrust * np.sin(thrust_angle) / mass
+            thrust_z = 0.0
+            gimbal_torque = thrust * moment_arm_m * np.sin(np.radians(gimbal_angle_deg))
+
+    torque_total = torque + gimbal_torque
+    alpha = torque_total / moment_of_inertia
 
     drag_x = -drag_coeff * density_ratio * speed * vx
     drag_y = -drag_coeff * density_ratio * speed * vy
@@ -71,13 +73,14 @@ def rk4_step(state, t, dt, drag_coeff=0.02, thrust_n=0.0,
              wind_accel_z=0.0, abort_time_s=None,
              grain_inner_radius0_m=None, grain_outer_radius_m=None,
              grain_burn_rate_m_s=None, grain_length_m=None,
-             thrust_per_area_n_m2=None, stability_coeff=0.0):
+             thrust_per_area_n_m2=None, stability_coeff=0.0,
+             gimbal_angle_deg=0.0, moment_arm_m=0.1):
     """Single classical RK4 step."""
     args = (drag_coeff, thrust_n, burn_time_s, dry_mass_kg, propellant_mass_kg,
             0.1, wind_accel_z, abort_time_s,
             grain_inner_radius0_m, grain_outer_radius_m,
             grain_burn_rate_m_s, grain_length_m, thrust_per_area_n_m2,
-            stability_coeff)
+            stability_coeff, gimbal_angle_deg, moment_arm_m)
 
     k1 = derivatives(state,               t,          *args)
     k2 = derivatives(state + 0.5*dt*k1,   t + 0.5*dt, *args)
@@ -94,11 +97,12 @@ def simulate(v0, angle_deg, dt=0.01, drag_coeff=0.02,
              abort_command_time_s=None, command_latency_s=0.0,
              grain_inner_radius0_m=None, grain_outer_radius_m=None,
              grain_burn_rate_m_s=None, grain_length_m=None,
-             thrust_per_area_n_m2=None, stability_coeff=0.0):
+             thrust_per_area_n_m2=None, stability_coeff=0.0,
+             gimbal_angle_deg=0.0, moment_arm_m=0.1):
     angle = np.radians(angle_deg)
     state = np.array([0.0, 0.0, 0.0,
-                      v0 * np.cos(angle), v0 * np.sin(angle), 0.0,
-                      0.0, 0.1])
+                  v0 * np.cos(angle), v0 * np.sin(angle), 0.0,
+                  angle, 0.1])  # x, y, z, vx, vy, vz, theta, omega
     t = 0.0
     ts, xs, ys, zs = [t], [state[0]], [state[1]], [state[2]]
 
@@ -121,7 +125,9 @@ def simulate(v0, angle_deg, dt=0.01, drag_coeff=0.02,
                          grain_burn_rate_m_s=grain_burn_rate_m_s,
                          grain_length_m=grain_length_m,
                          thrust_per_area_n_m2=thrust_per_area_n_m2,
-                         stability_coeff=stability_coeff)
+                         stability_coeff=stability_coeff,
+                         gimbal_angle_deg=gimbal_angle_deg,
+                         moment_arm_m=moment_arm_m)
         t += dt
         ts.append(t)
         xs.append(state[0])
