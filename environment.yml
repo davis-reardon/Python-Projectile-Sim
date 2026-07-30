@@ -1,0 +1,9 @@
+name: projectile-sim
+channels:
+  - defaults
+dependencies:
+  - python=3.13
+  - numpy
+  - pytest
+  - pyyaml
+  - pip
