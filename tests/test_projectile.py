@@ -35,3 +35,11 @@ def test_crosswind_produces_lateral_drift():
     _, _, _, z, _ = simulate(v0=30, angle_deg=45, wind_accel_z=2.0)
     assert z[-1] != 0.0
     assert z[-1] > 0  # wind_accel_z positive should drift in positive z
+
+def test_aero_torque_changes_final_theta():
+    """Nonzero stability_coeff should produce a different final orientation
+    than stability_coeff=0, proving aero torque actually acts on theta."""
+    _, _, _, _, theta_no_aero = simulate(v0=30, angle_deg=45, stability_coeff=0.0)
+    _, _, _, _, theta_with_aero = simulate(v0=30, angle_deg=45, stability_coeff=5.0)
+
+    assert theta_no_aero != theta_with_aero

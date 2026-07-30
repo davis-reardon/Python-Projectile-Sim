@@ -9,14 +9,22 @@ def derivatives(state, t, drag_coeff=0.02, thrust_n=0, burn_time_s=0,
                  wind_accel_z=0.0, abort_time_s=None,
                  grain_inner_radius0_m=None, grain_outer_radius_m=None,
                  grain_burn_rate_m_s=None, grain_length_m=None,
-                 thrust_per_area_n_m2=None):
+                 thrust_per_area_n_m2=None, stability_coeff=0.0):
     x, y, z, vx, vy, vz, theta, omega = state
     speed = np.sqrt(vx**2 + vy**2 + vz**2)
     rho = isa_density(y)
     rho0 = isa_density(0)
     density_ratio = rho / rho0
-    torque = 0.0
+
+    # Angle of attack: difference between body orientation and velocity direction
+    velocity_angle = np.arctan2(vy, vx)
+    aoa_raw = theta - velocity_angle
+    aoa = np.arctan2(np.sin(aoa_raw), np.cos(aoa_raw))  # wrap to [-pi, pi]
+
+    dynamic_pressure = 0.5 * rho * speed**2
+    torque = -stability_coeff * dynamic_pressure * aoa
     alpha = torque / moment_of_inertia
+
 
     use_grain = grain_inner_radius0_m is not None
 
@@ -63,12 +71,13 @@ def rk4_step(state, t, dt, drag_coeff=0.02, thrust_n=0.0,
              wind_accel_z=0.0, abort_time_s=None,
              grain_inner_radius0_m=None, grain_outer_radius_m=None,
              grain_burn_rate_m_s=None, grain_length_m=None,
-             thrust_per_area_n_m2=None):
+             thrust_per_area_n_m2=None, stability_coeff=0.0):
     """Single classical RK4 step."""
     args = (drag_coeff, thrust_n, burn_time_s, dry_mass_kg, propellant_mass_kg,
             0.1, wind_accel_z, abort_time_s,
             grain_inner_radius0_m, grain_outer_radius_m,
-            grain_burn_rate_m_s, grain_length_m, thrust_per_area_n_m2)
+            grain_burn_rate_m_s, grain_length_m, thrust_per_area_n_m2,
+            stability_coeff)
 
     k1 = derivatives(state,               t,          *args)
     k2 = derivatives(state + 0.5*dt*k1,   t + 0.5*dt, *args)
@@ -85,7 +94,7 @@ def simulate(v0, angle_deg, dt=0.01, drag_coeff=0.02,
              abort_command_time_s=None, command_latency_s=0.0,
              grain_inner_radius0_m=None, grain_outer_radius_m=None,
              grain_burn_rate_m_s=None, grain_length_m=None,
-             thrust_per_area_n_m2=None):
+             thrust_per_area_n_m2=None, stability_coeff=0.0):
     angle = np.radians(angle_deg)
     state = np.array([0.0, 0.0, 0.0,
                       v0 * np.cos(angle), v0 * np.sin(angle), 0.0,
@@ -111,7 +120,8 @@ def simulate(v0, angle_deg, dt=0.01, drag_coeff=0.02,
                          grain_outer_radius_m=grain_outer_radius_m,
                          grain_burn_rate_m_s=grain_burn_rate_m_s,
                          grain_length_m=grain_length_m,
-                         thrust_per_area_n_m2=thrust_per_area_n_m2)
+                         thrust_per_area_n_m2=thrust_per_area_n_m2,
+                         stability_coeff=stability_coeff)
         t += dt
         ts.append(t)
         xs.append(state[0])
