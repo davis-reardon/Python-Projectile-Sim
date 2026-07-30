@@ -1,11 +1,15 @@
 import numpy as np
 from src.simcore.atmosphere import isa_density
+from src.simcore.grain import bates_burn_radius, bates_burn_area
 
 G = 9.71  # in units of m/s^2
 
 def derivatives(state, t, drag_coeff=0.02, thrust_n=0, burn_time_s=0,
                  dry_mass_kg=5.0, propellant_mass_kg=0, moment_of_inertia=0.1,
-                 wind_accel_z=0.0, abort_time_s=None):
+                 wind_accel_z=0.0, abort_time_s=None,
+                 grain_inner_radius0_m=None, grain_outer_radius_m=None,
+                 grain_burn_rate_m_s=None, grain_length_m=None,
+                 thrust_per_area_n_m2=None):
     x, y, z, vx, vy, vz, theta, omega = state
     speed = np.sqrt(vx**2 + vy**2 + vz**2)
     rho = isa_density(y)
@@ -14,9 +18,20 @@ def derivatives(state, t, drag_coeff=0.02, thrust_n=0, burn_time_s=0,
     torque = 0.0
     alpha = torque / moment_of_inertia
 
+    use_grain = grain_inner_radius0_m is not None
+
     if t < burn_time_s and burn_time_s > 0:
+        # NOTE: mass depletion remains linear-in-time regardless of grain
+        # geometry (simplifying assumption) — only thrust profile changes
+        # when grain parameters are supplied.
         mass = dry_mass_kg + propellant_mass_kg * (1 - t / burn_time_s)
-        thrust = thrust_n
+        if use_grain:
+            r = bates_burn_radius(t, grain_inner_radius0_m,
+                                   grain_outer_radius_m, grain_burn_rate_m_s)
+            area = bates_burn_area(r, grain_length_m)
+            thrust = thrust_per_area_n_m2 * area
+        else:
+            thrust = thrust_n
     else:
         mass = dry_mass_kg
         thrust = 0
@@ -24,7 +39,6 @@ def derivatives(state, t, drag_coeff=0.02, thrust_n=0, burn_time_s=0,
     aborted = abort_time_s is not None and t >= abort_time_s
 
     if aborted:
-        # Redirect all thrust straight up to maximize altitude
         thrust_x, thrust_y, thrust_z = 0.0, thrust / mass, 0.0
     elif speed > 0:
         thrust_x = thrust * (vx / speed) / mass
@@ -46,10 +60,15 @@ def derivatives(state, t, drag_coeff=0.02, thrust_n=0, burn_time_s=0,
 
 def rk4_step(state, t, dt, drag_coeff=0.02, thrust_n=0.0,
              burn_time_s=0.0, dry_mass_kg=1.0, propellant_mass_kg=0.0,
-             wind_accel_z=0.0, abort_time_s=None):
+             wind_accel_z=0.0, abort_time_s=None,
+             grain_inner_radius0_m=None, grain_outer_radius_m=None,
+             grain_burn_rate_m_s=None, grain_length_m=None,
+             thrust_per_area_n_m2=None):
     """Single classical RK4 step."""
     args = (drag_coeff, thrust_n, burn_time_s, dry_mass_kg, propellant_mass_kg,
-            0.1, wind_accel_z, abort_time_s)
+            0.1, wind_accel_z, abort_time_s,
+            grain_inner_radius0_m, grain_outer_radius_m,
+            grain_burn_rate_m_s, grain_length_m, thrust_per_area_n_m2)
 
     k1 = derivatives(state,               t,          *args)
     k2 = derivatives(state + 0.5*dt*k1,   t + 0.5*dt, *args)
@@ -63,7 +82,10 @@ def simulate(v0, angle_deg, dt=0.01, drag_coeff=0.02,
              thrust_n=0.0, burn_time_s=0.0,
              dry_mass_kg=1.0, propellant_mass_kg=0.0,
              wind_accel_z=0.0,
-             abort_command_time_s=None, command_latency_s=0.0):
+             abort_command_time_s=None, command_latency_s=0.0,
+             grain_inner_radius0_m=None, grain_outer_radius_m=None,
+             grain_burn_rate_m_s=None, grain_length_m=None,
+             thrust_per_area_n_m2=None):
     angle = np.radians(angle_deg)
     state = np.array([0.0, 0.0, 0.0,
                       v0 * np.cos(angle), v0 * np.sin(angle), 0.0,
@@ -84,7 +106,12 @@ def simulate(v0, angle_deg, dt=0.01, drag_coeff=0.02,
                          dry_mass_kg=dry_mass_kg,
                          propellant_mass_kg=propellant_mass_kg,
                          wind_accel_z=wind_accel_z,
-                         abort_time_s=abort_time_s)
+                         abort_time_s=abort_time_s,
+                         grain_inner_radius0_m=grain_inner_radius0_m,
+                         grain_outer_radius_m=grain_outer_radius_m,
+                         grain_burn_rate_m_s=grain_burn_rate_m_s,
+                         grain_length_m=grain_length_m,
+                         thrust_per_area_n_m2=thrust_per_area_n_m2)
         t += dt
         ts.append(t)
         xs.append(state[0])
@@ -94,8 +121,7 @@ def simulate(v0, angle_deg, dt=0.01, drag_coeff=0.02,
         if abort_time_s is not None and t >= abort_time_s:
             aborted = True
 
-        # Self-destruct at apogee once aborted
-        if aborted and state[4] <= 0:  # vy <= 0 means falling
+        if aborted and state[4] <= 0:
             break
 
     return np.array(ts), np.array(xs), np.array(ys), np.array(zs), np.array(state[6])
