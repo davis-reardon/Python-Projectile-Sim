@@ -1,5 +1,7 @@
 # Python Projectile Sim — Simulation & Sim-to-HWIL Correlation Lab
 
+![Tests](https://github.com/davis-reardon/Python-Projectile-Sim/actions/workflows/tests.yml/badge.svg)
+
 A reproducible RK4 projectile/rocket simulation with a full sim-to-HWIL
 correlation workflow: reproducible telemetry generation, fault injection,
 time-aligned residual comparison, first-divergence detection, Monte Carlo
