@@ -48,6 +48,75 @@ python -m pytest -v
 - Structural (axial stress/yield margin) and thermal (stagnation heating)
   post-processing analysis
 
+## Scripts Reference
+
+### `scripts/generate_hwil_dataset.py`
+Generates telemetry from a simulated flight, optionally injecting
+sensor noise, clock offset, and sample dropout to mimic imperfect
+HWIL-style data.
+
+```bash
+# Clean digital baseline
+python -m scripts.generate_hwil_dataset --output data/results/digital.csv
+
+# Faulted "HWIL-like" dataset with all three fault types
+python -m scripts.generate_hwil_dataset --output data/results/hwil.csv --noise --offset --dropout
+
+# Isolate a single fault type (for root-cause investigation)
+python -m scripts.generate_hwil_dataset --output data/results/hwil_offset_only.csv --offset
+```
+
+**Use case:** producing paired datasets for correlation analysis, or
+isolating individual fault types to determine which one is driving a
+discrepancy (see `scripts/compare_runs.py` below).
+
+---
+
+### `scripts/compare_runs.py`
+Time-aligns two telemetry datasets via interpolation and reports the
+first sustained divergence between them, per signal.
+
+```bash
+# Compare the default digital.csv vs hwil.csv
+python -m scripts.compare_runs
+
+# Compare specific files with a custom tolerance
+python -m scripts.compare_runs --digital data/results/digital.csv --hwil data/results/hwil_offset_only.csv --tolerance 0.3
+```
+
+**Use case:** the core discrepancy-investigation tool — run it against
+different fault combinations to determine whether a large residual is
+caused by noise, timing, dropout, or a genuine model error.
+
+---
+
+### `scripts/run_campaign.py`
+Runs a reproducible Monte Carlo campaign, varying launch angle
+(aleatory) and drag coefficient (epistemic), and reports summary
+statistics and the worst-case run.
+
+```bash
+# Basic 200-run campaign
+python -m scripts.run_campaign --n-runs 200
+
+# Include a convergence study (10, 50, 100, 500 runs)
+python -m scripts.run_campaign --n-runs 200 --convergence --seed 42
+```
+
+**Use case:** quantifying uncertainty in final range given known
+input variability, and identifying which specific run (seed) produced
+the worst-case outcome for further investigation.
+
+---
+
+### `scripts/plot_trajectory.py`
+Renders a 3D visualization of a single simulated trajectory
+(downrange, cross-range, altitude), saved as a PNG.
+
+```bash
+python -m scripts.plot_trajectory
+```
+
 ## Sim-to-HWIL correlation workflow
 
 - **Fault injection** (`src/simcore/faults.py`): seeded, reproducible
