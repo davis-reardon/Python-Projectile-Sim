@@ -43,3 +43,44 @@ def test_aero_torque_changes_final_theta():
     _, _, _, _, theta_with_aero = simulate(v0=30, angle_deg=45, stability_coeff=5.0)
 
     assert theta_no_aero != theta_with_aero
+
+def test_body_axis_thrust_requires_correct_initial_theta():
+    """Thrust along body axis only helps range if theta starts aligned
+    with the initial velocity direction — this guards against theta
+    being hardcoded to 0 regardless of launch angle."""
+    _, x_aligned, _, _, _ = simulate(v0=30, angle_deg=45, thrust_n=300,
+                                       burn_time_s=1.0, dry_mass_kg=2.0,
+                                       propellant_mass_kg=0.5)
+    _, x_no_thrust, _, _, _ = simulate(v0=30, angle_deg=45, thrust_n=0)
+
+    # With theta correctly initialized to the launch angle, thrust should
+    # meaningfully outperform the unpowered case
+    assert x_aligned[-1] > x_no_thrust[-1] * 1.1  # not just marginally more
+
+def test_gimbal_angle_changes_trajectory():
+    """A nonzero gimbal angle should steer the trajectory differently than
+    zero gimbal (straight body-axis thrust) — proving vectoring actually
+    changes flight path, not just torque."""
+    _, x_straight, y_straight, _, _ = simulate(
+        v0=30, angle_deg=45, thrust_n=300, burn_time_s=1.0,
+        dry_mass_kg=2.0, propellant_mass_kg=0.5, gimbal_angle_deg=0.0)
+
+    _, x_vectored, y_vectored, _, _ = simulate(
+        v0=30, angle_deg=45, thrust_n=300, burn_time_s=1.0,
+        dry_mass_kg=2.0, propellant_mass_kg=0.5, gimbal_angle_deg=15.0)
+
+    assert x_vectored[-1] != x_straight[-1]
+
+
+def test_gimbal_angle_produces_torque():
+    """Nonzero gimbal angle should produce a different final theta than
+    zero gimbal, proving the moment-arm torque is real."""
+    _, _, _, _, theta_straight = simulate(
+        v0=30, angle_deg=45, thrust_n=300, burn_time_s=1.0,
+        dry_mass_kg=2.0, propellant_mass_kg=0.5, gimbal_angle_deg=0.0)
+
+    _, _, _, _, theta_vectored = simulate(
+        v0=30, angle_deg=45, thrust_n=300, burn_time_s=1.0,
+        dry_mass_kg=2.0, propellant_mass_kg=0.5, gimbal_angle_deg=15.0)
+
+    assert theta_straight != theta_vectored
