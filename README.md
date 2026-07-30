@@ -74,7 +74,8 @@ source, not a model-form error.
 
 46 tests across 11 test files, covering physics, coordinate transforms,
 telemetry schema, fault injection, comparison logic, and Monte Carlo
-reproducibility. Run with `python -m pytest -v`.
+reproducibility. Run with both an automated CI workflow under the 'Actions' 
+tab on github as well as: `python -m pytest -v`.
 
 ## Development workflow
 
