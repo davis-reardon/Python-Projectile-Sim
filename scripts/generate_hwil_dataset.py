@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 from src.simcore.projectile import simulate
 from src.simcore.frames import range_to_enu
@@ -6,23 +7,38 @@ from src.simcore.faults import add_gaussian_noise, apply_clock_offset, drop_samp
 
 SEED = 42
 
-# --- Clean digital simulation ---
-t, x, y, z, theta = simulate(v0=50, angle_deg=45, thrust_n=500,
-                               burn_time_s=3.0, dry_mass_kg=5.0,
-                               propellant_mass_kg=2.0)
-e, n, u = range_to_enu(x, y, az_deg=0.0)
-write_telemetry_csv("data/results/digital.csv", t, x, y, e, n, u)
 
-# --- Faulted "HWIL-like" version, same underlying run ---
-t_faulted, x_faulted, y_faulted, z_faulted, theta_faulted = drop_samples(
-    t, x, y, z, theta, drop_fraction=0.03, seed=SEED)
+def generate(output_path, apply_noise=False, apply_offset=False,
+             apply_dropout=False, noise_std=0.05, offset_s=0.05,
+             dropout_fraction=0.03):
+    t, x, y, z, theta = simulate(v0=50, angle_deg=45, thrust_n=500,
+                                   burn_time_s=3.0, dry_mass_kg=5.0,
+                                   propellant_mass_kg=2.0)
 
-x_faulted = add_gaussian_noise(x_faulted, noise_std=0.05, seed=SEED)
-y_faulted = add_gaussian_noise(y_faulted, noise_std=0.05, seed=SEED + 1)
-t_faulted = apply_clock_offset(t_faulted, offset_s=0.05)
+    if apply_dropout:
+        t, x, y, z, theta = drop_samples(t, x, y, z, theta,
+                                          drop_fraction=dropout_fraction, seed=SEED)
 
-e_faulted, n_faulted, u_faulted = range_to_enu(x_faulted, y_faulted, az_deg=0.0)
-write_telemetry_csv("data/results/hwil.csv", t_faulted, x_faulted, y_faulted,
-                     e_faulted, n_faulted, u_faulted)
+    if apply_noise:
+        x = add_gaussian_noise(x, noise_std=noise_std, seed=SEED)
+        y = add_gaussian_noise(y, noise_std=noise_std, seed=SEED + 1)
 
-print("Generated data/results/digital.csv and data/results/hwil.csv")
+    if apply_offset:
+        t = apply_clock_offset(t, offset_s=offset_s)
+
+    e, n, u = range_to_enu(x, y, az_deg=0.0)
+    write_telemetry_csv(output_path, t, x, y, e, n, u)
+    print(f"Generated {output_path} "
+          f"(noise={apply_noise}, offset={apply_offset}, dropout={apply_dropout})")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate a clean or faulted telemetry dataset")
+    parser.add_argument("--output", default="data/results/hwil.csv")
+    parser.add_argument("--noise", action="store_true")
+    parser.add_argument("--offset", action="store_true")
+    parser.add_argument("--dropout", action="store_true")
+    args = parser.parse_args()
+
+    generate(args.output, apply_noise=args.noise,
+             apply_offset=args.offset, apply_dropout=args.dropout)
